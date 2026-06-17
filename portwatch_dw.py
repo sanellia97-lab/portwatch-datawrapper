@@ -1,5 +1,6 @@
 import requests
 import pandas as pd
+import numpy as np
 import time
 import os
 from datetime import datetime, timedelta
@@ -10,6 +11,7 @@ DW_HEADERS = {"Authorization": f"Bearer {DW_TOKEN}", "Content-Type": "applicatio
 ARCGIS = "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/ArcGIS/rest/services/Daily_Chokepoints_Data/FeatureServer/0/query"
 COORDS = {"Suez Canal": (30.42, 32.35), "Strait of Hormuz": (26.56, 56.25), "Strait of Malacca": (1.25, 103.50), "Bab-el-Mandeb": (12.58, 43.38), "Turkish Straits": (41.12, 29.08), "Danish Straits": (55.80, 10.60), "Dover Strait": (51.02, 1.35), "Panama Canal": (9.08, -79.68), "Lombok Strait": (-8.75, 115.75), "Strait of Gibraltar": (35.97, -5.45), "Mozambique Channel": (-17.0, 40.0), "Cape of Good Hope": (-34.36, 18.48), "Cape Horn": (-55.98, -67.27), "Sunda Strait": (-6.00, 105.87), "Luzon Strait": (20.00, 121.50), "Taiwan Strait": (24.50, 119.50), "Korea Strait": (34.50, 129.00), "Tsugaru Strait": (41.50, 140.50), "Oresund": (55.98, 12.62), "St. Lawrence Seaway": (46.50, -71.00), "Yucatan Channel": (21.50, -85.50), "Florida Strait": (24.50, -80.50), "Windward Passage": (20.00, -74.00), "Mona Passage": (18.50, -67.50), "Messina Strait": (38.25, 15.65), "Otranto Strait": (40.00, 18.50), "Sicily Channel": (37.30, 11.30), "Northwest Passage": (74.00, -100.00)}
 NOMI_IT = {"Suez Canal": "Canale di Suez", "Strait of Hormuz": "Stretto di Hormuz", "Strait of Malacca": "Stretto di Malacca", "Bab-el-Mandeb": "Stretto di Bab-el-Mandeb", "Turkish Straits": "Stretti turchi (Bosforo/Dardanelli)", "Danish Straits": "Stretti danesi", "Dover Strait": "Stretto di Dover", "Panama Canal": "Canale di Panama", "Lombok Strait": "Stretto di Lombok", "Strait of Gibraltar": "Stretto di Gibilterra", "Mozambique Channel": "Canale del Mozambico", "Cape of Good Hope": "Capo di Buona Speranza", "Cape Horn": "Capo Horn", "Sunda Strait": "Stretto della Sonda", "Luzon Strait": "Stretto di Luzon", "Taiwan Strait": "Stretto di Taiwan", "Korea Strait": "Stretto di Corea", "Tsugaru Strait": "Stretto di Tsugaru", "Oresund": "Stretto di Oresund", "St. Lawrence Seaway": "Via navigabile del San Lorenzo", "Yucatan Channel": "Canale dello Yucatan", "Florida Strait": "Stretto della Florida", "Windward Passage": "Passo di Sopravvento", "Mona Passage": "Passo di Mona", "Messina Strait": "Stretto di Messina", "Otranto Strait": "Stretto di Otranto", "Sicily Channel": "Canale di Sicilia", "Northwest Passage": "Passaggio a Nord-Ovest"}
+GAP_SOGLIA = 14
 
 def fetch_chokepoints(days=1825):
     cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -27,8 +29,28 @@ def fetch_chokepoints(days=1825):
         print(f"  {len(records)} record...")
     df = pd.DataFrame(records)
     df["date"] = pd.to_datetime(df["date"])
-    df = df[df["n_total"] > 0]
     return df
+
+def smart_fill(series, soglia=GAP_SOGLIA):
+    s = series.copy().astype(float)
+    s[s == 0] = np.nan
+    result = s.copy()
+    i = 0
+    while i < len(s):
+        if pd.isna(s.iloc[i]):
+            j = i
+            while j < len(s) and pd.isna(s.iloc[j]):
+                j += 1
+            gap_len = j - i
+            if gap_len < soglia:
+                result.iloc[i:j] = np.nan
+                result = result.interpolate(method="linear")
+            else:
+                result.iloc[i:j] = 0
+            i = j
+        else:
+            i += 1
+    return result
 
 def create_chart(portname):
     nome_it = NOMI_IT.get(portname, portname)
@@ -37,9 +59,16 @@ def create_chart(portname):
         "type": "d3-area",
         "metadata": {
             "describe": {
-                "intro": "Media mobile a 30 giorni dei transiti giornalieri. Fonte: IMF PortWatch."
+                "intro": "Media mobile a 30 giorni. Gap lunghi = chiusure reali. Fonte: IMF PortWatch."
             },
-            "visualize": {"x-grid": "off", "y-grid": "on", "smooth": True, "base-color": "#c0392b", "color-palette": ["#c0392b"]}
+            "visualize": {
+                "x-grid": "off",
+                "y-grid": "on",
+                "smooth": True,
+                "base-color": "#c0392b",
+                "color-palette": ["#c0392b"]
+            }
+        }
     })
     r.raise_for_status()
     return r.json()["id"]
@@ -67,19 +96,19 @@ for portname in df["portname"].unique():
     df_port = df_port.set_index("date")
     full_range = pd.date_range(df_port.index.min(), df_port.index.max(), freq="D")
     df_port = df_port.reindex(full_range)
-    df_port["n_total"] = df_port["n_total"].interpolate(method="linear")
-    df_port["media_30"] = df_port["n_total"].rolling(30, center=True).mean().round(1)
-    df_port = df_port.dropna(subset=["media_30"]).reset_index()
-    df_port = df_port.rename(columns={"index": "date"})
-    df_port = df_port[["date", "media_30"]].copy()
-    df_port.columns = ["Data", "Navi in transito (media 30gg)"]
-    df_port["Data"] = df_port["Data"].dt.strftime("%Y-%m-%d")
+    df_port["n_filled"] = smart_fill(df_port["n_total"])
+    df_port["media_30"] = df_port["n_filled"].rolling(30, center=False, min_periods=20).mean().round(1)
+    df_port["media_30"] = df_port["media_30"].fillna(0)
+    df_port = df_port.reset_index().rename(columns={"index": "date"})
+    df_out = df_port[["date", "media_30"]].copy()
+    df_out.columns = ["Data", "Navi in transito (media 30gg)"]
+    df_out["Data"] = df_out["Data"].dt.strftime("%Y-%m-%d")
     nome_it = NOMI_IT.get(portname, portname)
     cid = create_chart(portname)
-    upload_data(cid, df_port)
+    upload_data(cid, df_out)
     publish_chart(cid)
     coords = COORDS.get(portname, (None, None))
-    results.append({"name": portname, "name_it": nome_it, "lat": coords[0], "lon": coords[1], "avg_daily": round(df_port["Navi in transito (media 30gg)"].mean(), 1), "embed": get_embed(cid), "chart_id": cid})
+    results.append({"name": portname, "name_it": nome_it, "lat": coords[0], "lon": coords[1], "avg_daily": round(df_out["Navi in transito (media 30gg)"].mean(), 1), "embed": get_embed(cid), "chart_id": cid})
     print(f"   ok {nome_it} -> {cid}")
     time.sleep(1)
 
