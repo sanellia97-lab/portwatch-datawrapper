@@ -90,7 +90,7 @@ for portname in df["portname"].unique():
     full_range = pd.date_range(df_port.index.min(), df_port.index.max(), freq="D")
     df_port = df_port.reindex(full_range)
     df_port["n_filled"] = smart_fill(df_port["n_total"])
-    df_port["media_30"] = df_port["n_filled"].rolling(30, center=True, min_periods=1).mean().round(1)
+    df_port["media_30"] = df_port["n_filled"].rolling(30, center=False, min_periods=20).mean().round(1)
     df_port = df_port.reset_index().rename(columns={"index": "date"})
     df_out = df_port[["date", "media_30"]].copy()
     df_out.columns = ["Data", "Navi in transito (media 30gg)"]
