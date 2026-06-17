@@ -37,11 +37,12 @@ def create_chart(portname):
         "type": "d3-area",
         "metadata": {
             "describe": {
-                "intro": "Totale mensile dei transiti. Fonte: IMF PortWatch."
+                "intro": "Media mobile a 30 giorni dei transiti giornalieri. Fonte: IMF PortWatch."
             },
             "visualize": {
                 "x-grid": "off",
-                "y-grid": "on"
+                "y-grid": "on",
+                "smooth": True
             }
         }
     })
@@ -64,31 +65,26 @@ print("1. Scarico dati PortWatch (5 anni)...")
 df = fetch_chokepoints(days=1825)
 print(f"   {len(df)} record, {df['portname'].nunique()} chokepoint")
 
-print("2. Aggrego per mese...")
-df["mese_ord"] = df["date"].dt.to_period("M")
-df["mese_label"] = df["date"].dt.strftime("%Y-%m-01")
-
-df_monthly = (df.groupby(["portname", "mese_ord", "mese_label"])["n_total"]
-              .sum()
-              .reset_index()
-              .sort_values("mese_ord"))
-df_monthly = df_monthly[df_monthly["n_total"] > 0]
-
-print("3. Creo chart per ogni chokepoint...")
+print("2. Calcolo media mobile 30 giorni...")
 results = []
-for portname in df_monthly["portname"].unique():
-    df_port = df_monthly[df_monthly["portname"] == portname][["mese_label", "n_total"]].copy()
-    df_port.columns = ["Mese", "Transiti totali"]
+for portname in df["portname"].unique():
+    df_port = df[df["portname"] == portname][["date", "n_total"]].sort_values("date").copy()
+    df_port = df_port.set_index("date").resample("D").mean()
+    df_port["media_30"] = df_port["n_total"].rolling(30, min_periods=15).mean().round(1)
+    df_port = df_port.dropna(subset=["media_30"]).reset_index()
+    df_port = df_port[["date", "media_30"]].copy()
+    df_port.columns = ["Data", "Navi in transito (media 30gg)"]
+    df_port["Data"] = df_port["Data"].dt.strftime("%Y-%m-%d")
     nome_it = NOMI_IT.get(portname, portname)
     cid = create_chart(portname)
     upload_data(cid, df_port)
     publish_chart(cid)
     coords = COORDS.get(portname, (None, None))
-    results.append({"name": portname, "name_it": nome_it, "lat": coords[0], "lon": coords[1], "avg_monthly": round(df_port["Transiti totali"].mean(), 0), "embed": get_embed(cid), "chart_id": cid})
+    results.append({"name": portname, "name_it": nome_it, "lat": coords[0], "lon": coords[1], "avg_daily": round(df_port["Navi in transito (media 30gg)"].mean(), 1), "embed": get_embed(cid), "chart_id": cid})
     print(f"   ok {nome_it} -> {cid}")
     time.sleep(1)
 
 df_final = pd.DataFrame(results)
 df_final.to_csv("chokepoints_flourish.csv", index=False)
-print("4. CSV per Flourish salvato!")
-print(df_final[["name_it", "lat", "lon", "avg_monthly", "chart_id"]].to_string())
+print("3. CSV per Flourish salvato!")
+print(df_final[["name_it", "lat", "lon", "avg_daily", "chart_id"]].to_string())
