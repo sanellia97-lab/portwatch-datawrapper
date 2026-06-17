@@ -39,6 +39,9 @@ def upload_data(cid, df):
 
 def publish_chart(cid):
     r = requests.post(f"{DW_BASE}/charts/{cid}/publish", headers=DW_HEADERS)
+    if r.status_code != 200:
+        print(f"   (publish skippato: {r.status_code})")
+        return
     r.raise_for_status()
 
 def get_embed(cid):
