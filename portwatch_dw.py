@@ -4,19 +4,12 @@ import time
 import os
 from datetime import datetime, timedelta
 
-DW_TOKEN = os.environ["DW_TOKEN"]
-DW_BASE = "https://api.datawrapper.de/v3"
-DW_HEADERS = {
-    "Authorization": f"Bearer {DW_TOKEN}",
-    "Content-Type": "application/json"
-}
-
 ARCGIS = (
     "https://services9.arcgis.com/weJ1QsnbMYJlCHdG"
     "/ArcGIS/rest/services/Daily_Chokepoints_Data/FeatureServer/0/query"
 )
 
-def fetch_chokepoints(days=90):
+def fetch_chokepoints(days=7):
     cutoff = int((datetime.now() - timedelta(days=days)).timestamp() * 1000)
     records = []
     offset = 0
@@ -38,9 +31,9 @@ def fetch_chokepoints(days=90):
         time.sleep(0.3)
     df = pd.DataFrame(records)
     print("COLONNE:", df.columns.tolist())
-    print(df.head(2))
+    print(df.head(3).to_string())
     return df
 
-print("1. Scarico dati PortWatch...")
-df_raw = fetch_chokepoints(days=7)
-print(f"   {len(df_raw)} record scaricati")
+print("Scarico dati PortWatch (7 giorni)...")
+df = fetch_chokepoints(days=7)
+print(f"Totale record: {len(df)}")
