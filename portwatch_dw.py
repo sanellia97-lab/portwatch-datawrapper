@@ -10,7 +10,6 @@ DW_HEADERS = {"Authorization": f"Bearer {DW_TOKEN}", "Content-Type": "applicatio
 ARCGIS = "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/ArcGIS/rest/services/Daily_Chokepoints_Data/FeatureServer/0/query"
 COORDS = {"Suez Canal": (30.42, 32.35), "Strait of Hormuz": (26.56, 56.25), "Strait of Malacca": (1.25, 103.50), "Bab-el-Mandeb": (12.58, 43.38), "Turkish Straits": (41.12, 29.08), "Danish Straits": (55.80, 10.60), "Dover Strait": (51.02, 1.35), "Panama Canal": (9.08, -79.68), "Lombok Strait": (-8.75, 115.75), "Strait of Gibraltar": (35.97, -5.45), "Mozambique Channel": (-17.0, 40.0), "Cape of Good Hope": (-34.36, 18.48), "Cape Horn": (-55.98, -67.27), "Sunda Strait": (-6.00, 105.87), "Luzon Strait": (20.00, 121.50), "Taiwan Strait": (24.50, 119.50), "Korea Strait": (34.50, 129.00), "Tsugaru Strait": (41.50, 140.50), "Oresund": (55.98, 12.62), "St. Lawrence Seaway": (46.50, -71.00), "Yucatan Channel": (21.50, -85.50), "Florida Strait": (24.50, -80.50), "Windward Passage": (20.00, -74.00), "Mona Passage": (18.50, -67.50), "Messina Strait": (38.25, 15.65), "Otranto Strait": (40.00, 18.50), "Sicily Channel": (37.30, 11.30), "Northwest Passage": (74.00, -100.00)}
 NOMI_IT = {"Suez Canal": "Canale di Suez", "Strait of Hormuz": "Stretto di Hormuz", "Strait of Malacca": "Stretto di Malacca", "Bab-el-Mandeb": "Stretto di Bab-el-Mandeb", "Turkish Straits": "Stretti turchi (Bosforo/Dardanelli)", "Danish Straits": "Stretti danesi", "Dover Strait": "Stretto di Dover", "Panama Canal": "Canale di Panama", "Lombok Strait": "Stretto di Lombok", "Strait of Gibraltar": "Stretto di Gibilterra", "Mozambique Channel": "Canale del Mozambico", "Cape of Good Hope": "Capo di Buona Speranza", "Cape Horn": "Capo Horn", "Sunda Strait": "Stretto della Sonda", "Luzon Strait": "Stretto di Luzon", "Taiwan Strait": "Stretto di Taiwan", "Korea Strait": "Stretto di Corea", "Tsugaru Strait": "Stretto di Tsugaru", "Oresund": "Stretto di Oresund", "St. Lawrence Seaway": "Via navigabile del San Lorenzo", "Yucatan Channel": "Canale dello Yucatan", "Florida Strait": "Stretto della Florida", "Windward Passage": "Passo di Sopravvento", "Mona Passage": "Passo di Mona", "Messina Strait": "Stretto di Messina", "Otranto Strait": "Stretto di Otranto", "Sicily Channel": "Canale di Sicilia", "Northwest Passage": "Passaggio a Nord-Ovest"}
-MESI_IT = {1: "Gen", 2: "Feb", 3: "Mar", 4: "Apr", 5: "Mag", 6: "Giu", 7: "Lug", 8: "Ago", 9: "Set", 10: "Ott", 11: "Nov", 12: "Dic"}
 
 def fetch_chokepoints(days=1825):
     cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -28,13 +27,14 @@ def fetch_chokepoints(days=1825):
         print(f"  {len(records)} record...")
     df = pd.DataFrame(records)
     df["date"] = pd.to_datetime(df["date"])
+    df = df[df["n_total"] > 0]
     return df
 
 def create_chart(portname):
     nome_it = NOMI_IT.get(portname, portname)
     r = requests.post(f"{DW_BASE}/charts", headers=DW_HEADERS, json={
         "title": f"I passaggi negli ultimi 5 anni — {nome_it}",
-        "type": "column-chart",
+        "type": "d3-area",
         "metadata": {
             "describe": {
                 "intro": "Totale mensile dei transiti. Fonte: IMF PortWatch."
@@ -65,10 +65,8 @@ df = fetch_chokepoints(days=1825)
 print(f"   {len(df)} record, {df['portname'].nunique()} chokepoint")
 
 print("2. Aggrego per mese...")
-df["anno"] = df["date"].dt.year
-df["mese_num"] = df["date"].dt.month
-df["mese_label"] = df["mese_num"].map(MESI_IT) + " " + df["anno"].astype(str)
 df["mese_ord"] = df["date"].dt.to_period("M")
+df["mese_label"] = df["date"].dt.strftime("%Y-%m-01")
 
 df_monthly = (df.groupby(["portname", "mese_ord", "mese_label"])["n_total"]
               .sum()
@@ -90,7 +88,4 @@ for portname in df_monthly["portname"].unique():
     print(f"   ok {nome_it} -> {cid}")
     time.sleep(1)
 
-df_final = pd.DataFrame(results)
-df_final.to_csv("chokepoints_flourish.csv", index=False)
-print("4. CSV per Flourish salvato!")
-print(df_final[["name_it", "lat", "lon", "avg_monthly", "chart_id"]].to_string())
+df_final =
