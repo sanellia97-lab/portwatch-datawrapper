@@ -15,7 +15,7 @@ def fetch_chokepoints(days=360):
     records = []
     offset = 0
     while True:
-        p = {"where": f"date >= DATE '{cutoff}'", "outFields": "date,portname,portid,n_total,n_container,n_tanker", "resultOffset": offset, "resultRecordCount": 2000, "orderByFields": "date", "f": "json"}
+        p = {"where": f"date >= DATE '{cutoff}'", "outFields": "date,portname,n_total", "resultOffset": offset, "resultRecordCount": 2000, "orderByFields": "date", "f": "json"}
         r = requests.get(ARCGIS, params=p).json()
         features = r.get("features", [])
         if not features:
@@ -29,7 +29,20 @@ def fetch_chokepoints(days=360):
     return df
 
 def create_chart(portname):
-    r = requests.post(f"{DW_BASE}/charts", headers=DW_HEADERS, json={"title": f"{portname} - Transiti giornalieri", "type": "d3-lines", "metadata": {"describe": {"intro": f"Navi in transito per {portname}. Fonte: IMF PortWatch."}}})
+    r = requests.post(f"{DW_BASE}/charts", headers=DW_HEADERS, json={
+        "title": f"I passaggi nell'ultimo anno — {portname}",
+        "type": "d3-lines",
+        "metadata": {
+            "describe": {
+                "intro": f"Media mobile a 7 giorni dei transiti giornalieri. Fonte: IMF PortWatch."
+            },
+            "visualize": {
+                "x-grid": "off",
+                "y-grid": "on",
+                "interpolation": "linear"
+            }
+        }
+    })
     r.raise_for_status()
     return r.json()["id"]
 
@@ -42,7 +55,6 @@ def publish_chart(cid):
     if r.status_code != 200:
         print(f"   (publish skippato: {r.status_code})")
         return
-    r.raise_for_status()
 
 def get_embed(cid):
     return f'<iframe src="https://datawrapper.dwcdn.net/{cid}/1/" width="600" height="400" frameborder="0"></iframe>'
@@ -54,17 +66,19 @@ print(f"   {len(df)} record, {df['portname'].nunique()} chokepoint")
 print("2. Creo chart per ogni chokepoint...")
 results = []
 for portname in df["portname"].unique():
-    df_port = df[df["portname"] == portname][["date", "n_total", "n_container", "n_tanker"]].sort_values("date").copy()
-    df_port.columns = ["Data", "Totale navi", "Container", "Petroliere"]
+    df_port = df[df["portname"] == portname][["date", "n_total"]].sort_values("date").copy()
+    df_port["Media 7gg"] = df_port["n_total"].rolling(7).mean().round(1)
+    df_out = df_port[["date", "Media 7gg"]].dropna()
+    df_out.columns = ["Data", "Navi in transito (media 7gg)"]
     cid = create_chart(portname)
-    upload_data(cid, df_port)
+    upload_data(cid, df_out)
     publish_chart(cid)
     coords = COORDS.get(portname, (None, None))
-    results.append({"name": portname, "lat": coords[0], "lon": coords[1], "avg_daily": round(df_port["Totale navi"].mean(), 1), "embed": get_embed(cid), "chart_id": cid})
+    results.append({"name": portname, "lat": coords[0], "lon": coords[1], "avg_daily": round(df_port["n_total"].mean(), 1), "embed": get_embed(cid), "chart_id": cid})
     print(f"   ok {portname} -> {cid}")
     time.sleep(1)
 
-df_out = pd.DataFrame(results)
-df_out.to_csv("chokepoints_flourish.csv", index=False)
+df_final = pd.DataFrame(results)
+df_final.to_csv("chokepoints_flourish.csv", index=False)
 print("3. CSV salvato!")
-print(df_out[["name", "lat", "lon", "avg_daily", "chart_id"]].to_string())
+print(df_final[["name", "lat", "lon", "avg_daily", "chart_id"]].to_string())
