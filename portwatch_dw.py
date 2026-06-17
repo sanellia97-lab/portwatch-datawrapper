@@ -36,4 +36,4 @@ def fetch_chokepoints(days=7):
 
 print("Scarico dati PortWatch (7 giorni)...")
 df = fetch_chokepoints(days=7)
-print(f"Totale record: {len(df)}")
+print(f"Totale record: {len(df)}") 
