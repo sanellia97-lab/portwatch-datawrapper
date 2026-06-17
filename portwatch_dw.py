@@ -34,22 +34,23 @@ def fetch_chokepoints(days=1825):
 def smart_fill(series, soglia=GAP_SOGLIA):
     s = series.copy().astype(float)
     s[s == 0] = np.nan
-    is_nan = s.isna()
-    filled = s.copy()
+    result = s.copy()
     i = 0
     while i < len(s):
-        if is_nan.iloc[i]:
+        if pd.isna(s.iloc[i]):
             j = i
-            while j < len(s) and is_nan.iloc[j]:
+            while j < len(s) and pd.isna(s.iloc[j]):
                 j += 1
             gap_len = j - i
             if gap_len < soglia:
-                filled.iloc[i:j] = np.nan
-                filled = filled.interpolate(method="linear")
+                result.iloc[i:j] = np.nan
+                result = result.interpolate(method="linear")
+            else:
+                result.iloc[i:j] = 0
             i = j
         else:
             i += 1
-    return filled
+    return result
 
 def create_chart(portname):
     nome_it = NOMI_IT.get(portname, portname)
@@ -60,7 +61,7 @@ def create_chart(portname):
             "describe": {
                 "intro": "Media mobile a 30 giorni. Gap lunghi = chiusure reali. Fonte: IMF PortWatch."
             },
-            "visualize": {"x-grid": "off", "y-grid": "on", "smooth": True}
+            "visualize": {"x-grid": "off", "y-grid": "on", "smooth": True, "base-color": "#c0392b", "color-palette": ["#c0392b"]}
         }
     })
     r.raise_for_status()
@@ -91,6 +92,7 @@ for portname in df["portname"].unique():
     df_port = df_port.reindex(full_range)
     df_port["n_filled"] = smart_fill(df_port["n_total"])
     df_port["media_30"] = df_port["n_filled"].rolling(30, center=False, min_periods=20).mean().round(1)
+    df_port["media_30"] = df_port["media_30"].fillna(0)
     df_port = df_port.reset_index().rename(columns={"index": "date"})
     df_out = df_port[["date", "media_30"]].copy()
     df_out.columns = ["Data", "Navi in transito (media 30gg)"]
