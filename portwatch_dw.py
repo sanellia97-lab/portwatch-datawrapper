@@ -88,4 +88,7 @@ for portname in df_monthly["portname"].unique():
     print(f"   ok {nome_it} -> {cid}")
     time.sleep(1)
 
-df_final =
+df_final = pd.DataFrame(results)
+df_final.to_csv("chokepoints_flourish.csv", index=False)
+print("4. CSV per Flourish salvato!")
+print(df_final[["name_it", "lat", "lon", "avg_monthly", "chart_id"]].to_string())
