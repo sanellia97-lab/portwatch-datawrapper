@@ -6,6 +6,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: pip install requests
-      - run: python test_connection.py
+      - name: Test connessione
+        run: python test_connection.py
         env:
           DW_TOKEN: ${{ secrets.DW_TOKEN }}
