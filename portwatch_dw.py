@@ -65,13 +65,17 @@ print("1. Scarico dati PortWatch (5 anni)...")
 df = fetch_chokepoints(days=1825)
 print(f"   {len(df)} record, {df['portname'].nunique()} chokepoint")
 
-print("2. Calcolo media mobile 30 giorni...")
+print("2. Processo ogni chokepoint...")
 results = []
 for portname in df["portname"].unique():
     df_port = df[df["portname"] == portname][["date", "n_total"]].sort_values("date").copy()
-    df_port = df_port.set_index("date").resample("D").mean()
-    df_port["media_30"] = df_port["n_total"].rolling(30, min_periods=15).mean().round(1)
+    df_port = df_port.set_index("date")
+    full_range = pd.date_range(df_port.index.min(), df_port.index.max(), freq="D")
+    df_port = df_port.reindex(full_range)
+    df_port["n_total"] = df_port["n_total"].interpolate(method="linear")
+    df_port["media_30"] = df_port["n_total"].rolling(30, center=True).mean().round(1)
     df_port = df_port.dropna(subset=["media_30"]).reset_index()
+    df_port = df_port.rename(columns={"index": "date"})
     df_port = df_port[["date", "media_30"]].copy()
     df_port.columns = ["Data", "Navi in transito (media 30gg)"]
     df_port["Data"] = df_port["Data"].dt.strftime("%Y-%m-%d")
