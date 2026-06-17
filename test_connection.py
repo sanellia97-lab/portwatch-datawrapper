@@ -1,6 +1,7 @@
 import requests
+import os
 
-DW_TOKEN = "imoQdzeGyCs4RSIKClfksVlyoL7B1HTLItDdT1vXqNSB87C5JR84TvLdsO0rhZeI"
+DW_TOKEN = os.environ["DW_TOKEN"]
 
 r = requests.get(
     "https://api.datawrapper.de/v3/me",
